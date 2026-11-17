@@ -36,7 +36,7 @@ onUnmounted(() => observer?.disconnect());
       ><button
         v-for="h in items"
         :key="h.id"
-        v-show="position(h).visible"
+        v-show="position(h).onScreen"
         class="hotspot"
         :style="{ left: position(h).x + 'px', top: position(h).y + 'px' }"
         @pointerdown.stop

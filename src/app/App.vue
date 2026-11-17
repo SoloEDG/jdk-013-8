@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import {
   Waves,
   ArrowUpRight,
@@ -11,12 +11,18 @@ import {
   Compass,
   ChevronRight,
   X,
+  Images,
+  Frame,
 } from "lucide-vue-next";
 import { PanoramaView } from "../features/panorama";
 import { ChapterList, MediaPlayer, Transport } from "../features/chapters";
 import { HotspotLayer, HotspotDetail } from "../features/hotspots";
 import { InterviewPanel, PeopleList } from "../features/interviews";
 import { JournalPanel } from "../features/journal";
+import { PostcardStudio } from "../features/postcards";
+import { formatFraming } from "../shared/geometry";
+import { parseReturnHash } from "../shared/deeplink";
+import { chapters } from "../shared/content";
 import { createWorkspace } from "./workspace";
 const w = createWorkspace(),
   about = ref(false),
@@ -30,6 +36,31 @@ async function fullscreen() {
     fullError.value = "当前浏览器不支持全屏";
   }
 }
+function showStudio() {
+  if (!w.journal.entries.value.length) {
+    w.tab.value = "journal";
+    w.announce("先在手记里挑选几条记录，再制作明信片。");
+    return;
+  }
+  w.openStudio();
+}
+function confirmAndRedraw() {
+  w.confirmFraming();
+  if (w.studio.mode.value === "latest") w.studio.reapply();
+  else w.studio.setMode("latest");
+}
+onMounted(() => {
+  const target = parseReturnHash(window.location.hash);
+  if (!target) return;
+  const known = chapters.some((chapter) => chapter.id === target.chapterId);
+  if (!known) {
+    w.announce("这张明信片的章节已不存在，已回到第一章。", 6000);
+    return;
+  }
+  w.dispatch({ type: "restore", target });
+  // Keep the address shareable but avoid re-restoring on refresh loops.
+  history.replaceState(null, "", window.location.pathname);
+});
 </script>
 <template>
   <div class="site-shell">
@@ -49,6 +80,13 @@ async function fullscreen() {
           @click="w.tab.value = 'journal'"
         >
           探索手记 <span>{{ w.journal.entries.value.length }}</span></button
+        ><button
+          :class="{ active: w.tab.value === 'studio' }"
+          class="studio-nav"
+          aria-label="明信片工作室"
+          @click="showStudio"
+        >
+          <span class="studio-nav-text">明信片工作室</span> <Images :size="13" /></button
         ><button @click="about = true">
           关于本片 <ArrowUpRight :size="13" />
         </button>
@@ -67,8 +105,8 @@ async function fullscreen() {
           <p>3 个章节 <i>/</i> 360° 自由探索 <i>/</i> 3 位讲述者</p>
         </div>
       </div>
-      <template v-if="w.tab.value === 'story'"
-        ><div class="workspace">
+      <template v-if="w.tab.value === 'story' || w.tab.value === 'studio'"
+        ><div class="workspace" :class="{ 'workspace--studio': w.tab.value === 'studio' }">
           <section ref="stage" class="stage">
             <PanoramaView
               :controller="w.camera"
@@ -102,6 +140,17 @@ async function fullscreen() {
                 <h2>{{ w.playback.chapter.value.title }}</h2>
                 <p>{{ w.playback.chapter.value.description }}</p>
               </div>
+              <div class="framing-mark" aria-live="polite">
+                <span class="framing-readout">
+                  <Frame :size="13" /> {{ formatFraming(w.camera.camera) }}
+                </span>
+                <button
+                  class="framing-confirm"
+                  @click="w.confirmFraming()"
+                >
+                  记下这个构图
+                </button>
+              </div>
               <div class="drag-hint">
                 <MousePointer2 :size="14" /> 按住拖动，环顾四周
               </div></PanoramaView
@@ -125,7 +174,7 @@ async function fullscreen() {
             />
             <p v-if="fullError" role="status">{{ fullError }}</p>
           </section>
-          <aside class="sidebar">
+          <aside v-if="w.tab.value === 'story'" class="sidebar">
             <div class="section-heading">
               <h2>故事章节</h2>
               <span>CHAPTERS</span>
@@ -163,9 +212,13 @@ async function fullscreen() {
               <BookOpen :size="15" /> 打开我的探索手记
               <ChevronRight :size="15" />
             </button>
+            <button class="journal-link studio-link" @click="showStudio">
+              <Images :size="15" /> 制作全景故事明信片
+              <ChevronRight :size="15" />
+            </button>
           </aside>
         </div>
-        <section class="below">
+        <section v-if="w.tab.value === 'story'" class="below">
           <div class="field-note">
             <small><Compass :size="14" /> EXPLORER'S NOTE</small>
             <h2>故事，不止一个方向。</h2>
@@ -180,16 +233,25 @@ async function fullscreen() {
             </div>
             <PeopleList @open="w.enterPerson($event)" />
           </div></section></template
-      ><JournalPanel
-        v-else
+      ><PostcardStudio
+        v-if="w.tab.value === 'studio'"
+        :studio="w.studio"
+        @close="w.closeStudio()"
+        @confirm-framing="confirmAndRedraw"
+      /><JournalPanel
+        v-if="w.tab.value === 'journal'"
         :journal="w.journal"
         @revisit="w.dispatch({ type: 'revisit', entry: $event })"
+        @create-postcards="w.openStudio($event)"
       />
       <footer>
         <span>SHORELINE ORIGINALS <i>© 2026</i></span
         ><span>让每一段平凡的生活，被看见。 <Waves :size="18" /></span>
       </footer>
     </main>
+    <div v-if="w.toast.value" class="site-toast" role="status">
+      {{ w.toast.value }}
+    </div>
     <div v-if="about" class="modal-backdrop" @click.self="about = false">
       <section
         class="about"
@@ -206,6 +268,9 @@ async function fullscreen() {
         </p>
         <p>
           拖动环顾四周，滚轮调整视角；点击热点发现支线，返回主线继续观看。探索记录仅保存在此浏览器中。
+        </p>
+        <p>
+          在探索手记里挑选几条记录，可以制作成可离线打开的全景故事明信片：卡片会带上当时的取景、人物摘录与返回现场线索。
         </p>
         <button class="primary" @click="about = false">开始探索 ↗</button>
       </section>

@@ -48,9 +48,18 @@ export interface Entry {
   note: string;
   createdAt: number;
 }
+/** A portable pointer back into a scene: what a postcard hands to its reader. */
+export interface ReturnTarget {
+  chapterId: string;
+  time: number;
+  camera: Camera;
+  hotspotId?: string;
+  title?: string;
+}
 export type Command =
   | { type: "chapter"; id: string }
   | { type: "seek"; time: number }
   | { type: "hotspot"; id: string }
   | { type: "return" }
-  | { type: "revisit"; entry: Entry };
+  | { type: "revisit"; entry: Entry }
+  | { type: "restore"; target: ReturnTarget };

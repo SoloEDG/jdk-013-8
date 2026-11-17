@@ -1,18 +1,31 @@
-import { wrap } from "../../../shared/format";
+import { projectDirection } from "../../../shared/geometry";
 import type { Camera } from "../../../shared/types";
+
+export interface ProjectedPoint {
+  x: number;
+  y: number;
+  visible: boolean;
+  onScreen: boolean;
+}
+
+/**
+ * Exact rectilinear projection, matching the orientation of the Three.js
+ * panorama camera. The previous tangent approximation drifted for pitch and
+ * wide angles, which would have made hotspot pins disagree with the framing
+ * captured on a postcard.
+ */
 export function project(
   yaw: number,
   pitch: number,
   camera: Camera,
   width: number,
   height: number,
-) {
-  const delta = (wrap(yaw - camera.yaw) * Math.PI) / 180;
-  const vertical = ((pitch - camera.pitch) * Math.PI) / 180;
-  const focal = height / (2 * Math.tan((camera.fov * Math.PI) / 360));
+): ProjectedPoint {
+  const point = projectDirection(yaw, pitch, camera, width, height);
   return {
-    x: width / 2 + Math.tan(delta) * focal,
-    y: height / 2 - Math.tan(vertical) * focal,
-    visible: Math.abs(delta) < Math.PI / 2 && Math.abs(vertical) < Math.PI / 2,
+    x: point.x,
+    y: point.y,
+    visible: point.visible,
+    onScreen: point.onScreen,
   };
 }
